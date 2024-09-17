@@ -1,12 +1,16 @@
 # encoding: utf-8
 from django.apps import apps
 from django.views.generic import FormView
+
+from django.utils.module_loading import import_string
+
 from .forms import ShellForm
 from django.http import (
     HttpResponseForbidden,
     HttpResponseNotFound
 )
 from django.conf import settings
+from django.utils import timezone
 
 try:
     # Only for python 2
@@ -24,7 +28,8 @@ from .settings import (
     ADMIN_SHELL_IMPORT_DJANGO,
     ADMIN_SHELL_IMPORT_DJANGO_MODULES,
     ADMIN_SHELL_IMPORT_MODELS,
-    ADMIN_SHELL_CLEAR_SCOPE_ON_CLEAR_HISTORY
+    ADMIN_SHELL_CLEAR_SCOPE_ON_CLEAR_HISTORY, 
+    ADMIN_SHELL_CALLBACK
 )
 
 import django
@@ -234,11 +239,15 @@ class ShellView(FormView):
         return super(ShellView, self).get(request, *args, **kwargs)
 
     def form_valid(self, form):
+
         code = form.cleaned_data.get("code", "")
+        result = None
+        print('daaaaaaaaaaaaaaaaaaa')
         if len(code.strip()) > 0:
             result = self.runner.run_code(code)
             self.add_to_outout(result)
             self.save_output()
+        self.call_callback(self.request, result, code)
         return super(ShellView, self).form_valid(form)
 
     def get_context_data(self, **kwargs):
@@ -251,3 +260,26 @@ class ShellView(FormView):
         ctx['django_version'] = get_dj_version()
         ctx['auto_import'] = str(self.runner.importer)
         return ctx
+
+    def call_callback(self, request, response, code) -> None:
+        callback = ADMIN_SHELL_CALLBACK
+        if not callback:
+            return
+        callback = import_string(callback)
+        print(callback, callable(callback))
+        if not callable(callback):
+            return
+        try:
+            callback_data = {
+                'request': request,
+                'user': request.user,
+                'code': code,
+                'response': response,
+                'timestamp': timezone.now()
+            }
+            callback(callback_data)
+        except Exception as e:
+            warnings.warn(
+                f"Error in ADMIN_SHELL_CALLBACK: {str(e)}",
+                RuntimeWarning
+            )
