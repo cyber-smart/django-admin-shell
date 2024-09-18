@@ -28,7 +28,7 @@ from .settings import (
     ADMIN_SHELL_IMPORT_DJANGO,
     ADMIN_SHELL_IMPORT_DJANGO_MODULES,
     ADMIN_SHELL_IMPORT_MODELS,
-    ADMIN_SHELL_CLEAR_SCOPE_ON_CLEAR_HISTORY, 
+    ADMIN_SHELL_CLEAR_SCOPE_ON_CLEAR_HISTORY,
     ADMIN_SHELL_CALLBACK
 )
 
@@ -242,7 +242,6 @@ class ShellView(FormView):
 
         code = form.cleaned_data.get("code", "")
         result = None
-        print('daaaaaaaaaaaaaaaaaaa')
         if len(code.strip()) > 0:
             result = self.runner.run_code(code)
             self.add_to_outout(result)
@@ -262,12 +261,22 @@ class ShellView(FormView):
         return ctx
 
     def call_callback(self, request, response, code) -> None:
-        callback = ADMIN_SHELL_CALLBACK
-        if not callback:
+        callback_string = ADMIN_SHELL_CALLBACK
+        if not callback_string:
             return
-        callback = import_string(callback)
-        print(callback, callable(callback))
+        try:
+            callback = import_string(callback_string)
+        except Exception as e:
+            warnings.warn(
+                f"Error in trying to import callback function: {str(e)}",
+                RuntimeWarning
+            )
+            return
         if not callable(callback):
+            warnings.warn(
+                f"ADMIN_SHELL_CALLBACK is set but is not callable: {callback_string}",
+                RuntimeWarning
+            )
             return
         try:
             callback_data = {
